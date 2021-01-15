@@ -1,0 +1,36 @@
+# depslib dependency file v1.0
+1462005685 source:c:\users\tormás\pictures\documents\c++\graphicsprojectjo\graphicsproject\main.cpp
+	"graphics.hpp"
+	<fstream>
+	<vector>
+	<string>
+
+1430026066 c:\users\tormás\pictures\documents\c++\graphicsprojectjo\graphicsproject\include\graphics.hpp
+	<string>
+
+1466355072 source:c:\users\tormás\pictures\documents\c++\flappy_2\graphicsproject\main.cpp
+	"graphics.hpp"
+	<iostream>
+	<cmath>
+	<cstdlib>
+	<vector>
+	<ctime>
+	<sstream>
+	<fstream>
+
+1430022466 c:\users\tormás\pictures\documents\c++\flappy_2\graphicsproject\include\graphics.hpp
+	<string>
+
+1584567266 source:c:\users\domonkos\documents\programjaim\archivum\c++\flappy_2\graphicsproject\main.cpp
+	"graphics.hpp"
+	<iostream>
+	<cmath>
+	<cstdlib>
+	<vector>
+	<ctime>
+	<sstream>
+	<fstream>
+
+1584567267 c:\users\domonkos\documents\programjaim\archivum\c++\flappy_2\graphicsproject\include\graphics.hpp
+	<string>
+

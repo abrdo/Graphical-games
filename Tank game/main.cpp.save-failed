@@ -1,0 +1,587 @@
+#include "graphics.hpp"
+#include <iostream>
+#include <vector>
+#include <random>
+#include <time.h>
+#include <fstream>
+#include <sstream>
+#include <cmath>
+#define PI 3.14159265358979323846
+using namespace genv;
+using namespace std;
+
+const string imgpath = "imgs/"; /// Set your own!
+const float imgS = 64; //64x64 tank and shall imgs.
+const float imgS_shell = 32;
+
+const int XX = 1000;
+const int YY = 600;
+const int TIMER = 40;
+const int BGr = 128, BGg = 96, BGb = 0; //background rgb
+
+enum Mode {menu, play, game_over};
+enum Team {player, enemy};
+vector<string> colors = {"red", "green", "turq", "blue"};
+/*
+enum Comp_type {Hull, Gun, Explosion, Fire};
+enum Comp_subtype {_null = 0, _1, _2, _3, _4, _5, _6, _7, _8, _red, _turq, _green, _blue};
+*/
+
+string str(int i){
+    stringstream ss;
+    string s;
+    ss<<i;
+    ss>>s;
+    return s;
+}
+
+
+void clear_window(){
+    gout<<color(BGr, BGg, BGb)<<move_to(0,0)<<box(XX,YY)<<color(255,255,255);
+}
+
+class Button{
+    int x, y;
+    unsigned char r, g, b;
+    int sx, sy;
+    string texts;
+    bool active;
+    bool pushed;
+public:
+    Button(string _text, int _x, int _y,
+           int _sx = 200, int _sy = 50,
+           int _r = 102, int _g = 102, int _b = 51) :
+               texts(_text), x(_x), y(_y), sx(_sx), sy(_sy), r(_r), g(_g), b(_b), pushed(false){}
+
+
+    bool isIn(int px, int py){
+        if(x-sx/2<px && px<x+sx/2 && y-sy/2<py && py<y+sy/2){
+            pushed = true;
+            return true;
+        }
+        return false;
+    }
+
+    void show(){
+        int xS=x-sx/2; int yS=y-sy/2; int sxS=sx; int syS=sy;
+
+        if(!pushed){
+            gout<<color(r*0.8, g*0.8, b*0.8)<<move_to(xS,yS)<<box(sxS-(xS-x),syS-(yS-y));
+            gout<<color(r*0.8, g*0.8, b*0.8)<<move_to(xS+3,yS+3)<<box(sxS-6-(xS-x),syS-6-(yS-y));
+            if(0 <= x+sx/2-4 && 0 <= y+sy/2+5)
+                gout<<move_to(x, y+5)<<color(255,255,255)<<text(texts);
+        }
+        else{
+            gout<<color(r,g,b)<<move_to(xS+10,yS+10)<<box(sxS-(xS-x)+10,syS-(yS-y)+10);
+            gout<<color(r, g, b)<<move_to(xS+3+10,yS+3+10)<<box(sxS-6-(xS-x)+10,syS-6-(yS-y)+10);
+            if(0 <= x+sx/2-4 && 0 <= y+sy/2+5)
+                gout<<move_to(x+10, y+5+10)<<color(255,255,255)<<text(texts);
+        }
+    }
+};
+
+
+///------------------------------------------------------------------------------------------------------------------
+struct Pixel{
+    unsigned char r, g, b;
+    bool transp; //is transparent?
+    Pixel(){}
+    Pixel( unsigned char _r, unsigned char _g, unsigned char _b, bool _transp = false): r(_r), g(_g), b(_b), transp(_transp) {};
+};
+
+vector<vector<Pixel>> load_img(string filename){
+    ifstream f(filename);
+    if(!f.good()){
+        cerr <<"Error: File not found: " + filename <<endl;
+        exit(1);
+    }
+    int xx, yy;
+    f>>xx>>yy;
+    vector<vector<Pixel>> pixels(xx, vector<Pixel>(yy)); //xx  *  yy-length (column)vector
+
+    int r, g, b;
+    Pixel p;
+    for(int y =0; y<yy; y++){
+        for(int x = 0; x<xx; x++){
+            f>>r>>g>>b;
+            if(r+g+b == 0)  p = Pixel(r,g,b,true);
+            else            p = Pixel(r,g,b);
+            pixels[x][y] = p;
+        }
+    }
+    return pixels;
+}
+
+
+class Component{
+protected:
+    string name;
+    vector<vector<Pixel>> pixels;
+    float px, py, vx, vy; //ax, ay,
+    float cx, cy; //center - for positioning and rotation
+    float alpha, v_alpha;
+    float v;
+public:
+    Component(){}
+    Component(float _px, float _py, float _cx, float _cy, string _filename,          float _alpha =0, float _v = 0):
+                    pixels(load_img(imgpath+_filename+".kep")), px(_px), py(_py), cx(_cx), cy(_cy), alpha(_alpha), v(_v), v_alpha(_alpha), name(_filename){}
+
+    Component(string _name, float _px, float _py,     float _alpha = -PI/2, float _v = 0):   pixels(load_img(imgpath+_name+".kep")), px(_px), py(_py), alpha(_alpha), v(_v), v_alpha(_alpha), name(_name), cx(-1), cy(-1){
+        if(name == "Shell") cx = cy = imgS_shell/2;
+        cx = imgS/2;
+        for(string c : colors){
+            if(name == "Hull_"+c) cy = (40.0/64.0)*imgS;
+            if(name == "Gun_" +c) cy = (40.0/64.0)*imgS;
+        }
+        for(int i = 1; i<=8; i++){
+            if(name == "Explosion_"+str(i)) cy = imgS/2;
+            if(name == "Fire_"     +str(i)) cy = imgS/2+imgS*40/64;
+        }
+        if(cy == -1){
+            cerr<<"No defined rotation center point for '"+ imgpath+name +".kep' image file."<<endl
+                <<"Please define it via using this operator:"<<endl
+                <<"Object(float _px, float _py, float _cx, float _cy, string _filename,      float _dx = 0, float _dy = 1, float _v = 0)"<<endl;
+            exit(1);
+        }
+    }
+
+    void show(float intensity = 1){
+        for(int x = 0; x < pixels.size(); x++){
+            for(int y = 0; y<pixels[0].size(); y++){
+                if(!pixels[x][y].transp
+                   &&0<=px-cx+(cos(alpha+PI/2)*(x-cx)-sin(alpha+PI/2)*(y-cy)+cx) && XX > px-cx+(cos(alpha+PI/2)*(x-cx)-sin(alpha+PI/2)*(y-cy)+cx)
+                   && 0<=py-cy+(sin(alpha+PI/2)*(x-cx)+cos(alpha+PI/2)*(y-cy)+cy) && YY > py-cy+(sin(alpha+PI/2)*(x-cx)+cos(alpha+PI/2)*(y-cy)+cy)
+                  )
+                    //Todo fent --
+                    //move_to(px-cx+x, py-cy+y)
+                    //move_to(px-(cx-x)*cos(1), py-(cy-y)*cos(1))
+                    gout << move_to(px-cx+(cos(alpha+PI/2)*(x-cx)-sin(alpha+PI/2)*(y-cy)+cx) , py-cy+(sin(alpha+PI/2)*(x-cx)+cos(alpha+PI/2)*(y-cy)+cy)) << color(intensity * (int)pixels[x][y].r + (1-intensity) * BGr,
+                                                         intensity * (int)pixels[x][y].g + (1-intensity) * BGg,
+                                                         intensity * (int)pixels[x][y].b + (1-intensity) * BGb) << dot;
+            }
+        }
+        gout<<move_to(XX-400, YY-10)<<color(0,0,0)<<text("if you push space, it will be game over");
+    }
+
+    void move(float speed = 5){
+        if(0 <= px + speed * cos(v_alpha) && px + speed * cos(v_alpha) < XX)
+            px += speed * cos(v_alpha);
+        if(0 <= py + speed * sin(v_alpha) && py + speed * sin(v_alpha) < YY)
+            py += speed * sin(v_alpha);
+
+        px += v*cos(alpha);
+        py += v*sin(alpha);
+
+    }
+
+    void turn(float rad = PI/10, bool also_alpha = true){
+        v_alpha += rad;
+        if (also_alpha) alpha += rad;
+    }
+
+    void set_alpha(float posx, float posy){
+        if((posx-px) < 0) alpha = PI + atan((posy-py)/(posx-px));
+        else alpha = atan((posy-py)/(posx-px));
+    }
+
+    Component* shoots(){
+        Component *news = new Component("Shell", px, py, alpha, 12);
+        return news;
+    }
+
+    float get_px() {return px;}
+    float get_py() {return py;}
+
+
+
+
+
+
+};
+
+class Tank{
+    Component *hull;
+    Component *weapon;
+    vector<Component*> explosions;
+    vector<Component*> fires;
+    int exploding;
+    int firing;
+
+    Team team;
+    float x, y;
+    bool dead;
+    bool exploaded;
+    int shells;
+
+    public:
+    Tank(Team _team, float _x, float _y) : team(_team), x(_x), y(_y), shells(5), exploding(-1), firing(-1), dead(false), exploaded(false){
+        string color;
+        if      (_team == player) color = "turq";
+        else if (_team == enemy) color = "red";
+        else    cerr<<"No defined color for this tank team."<<endl;
+
+        hull = new Component("Hull_"+color, x, y);
+        weapon = new Component("Gun_"+color, x, y);
+
+        for(int i = 1; i <=8; i++){
+            Component *c = new Component("Explosion_"+str(i), x, y);
+            explosions.push_back(c);
+        }
+        for(int i = 1; i <=4; i++){
+            Component *c = new Component("Fire_"+str(i), x, y);
+            fires.push_back(c);
+        }
+
+    }
+
+    void show(float intensity = 1){
+        if(exploaded) return;
+        hull->show(intensity);
+        weapon->show(intensity);
+
+        if(exploding > -1){
+            hull->show(intensity/exploding);
+            weapon->show(intensity/exploding);
+            explosions[exploding/2]->show();
+            if (exploding+1 < 2*explosions.size()) exploding++;
+            else{
+                exploding = -1;
+                bool exploaded = true;
+            }
+        }
+        if(firing > -1){
+            fires[firing/2]->show();
+            if (firing+1 < 2*fires.size()) firing++;
+            else firing = -1;
+        }
+    }
+
+    bool isExploaded() {return exploaded;}
+
+    void move(float speed){
+        if(dead) return;
+        hull->move(speed);
+        weapon->move(speed);
+        for(Component *e : explosions) e->move(speed);
+        for(Component *f : fires) f->move(speed);
+    }
+
+    void turn(float rad = PI/10){
+        if(dead) return;
+        hull->turn(rad);
+        weapon->turn(rad, false);
+        for(f : fires) f->turn(rad, false);
+        for(e : explosions) e->turn(rad);
+    }
+
+    void set_weapon_direction(float posx, float posy){
+        if(dead) return;
+        weapon->set_alpha(posx, posy);
+        for(f : fires) f->set_alpha(posx, posy);
+    }
+
+    Component* shoot(){
+        firing = 0;
+        return weapon->shoots();
+    }
+
+    float getx() {return weapon->get_px();}
+    float gety() {return weapon->get_py();}
+
+    bool isHit(Component* c){
+        if(dead) return false;
+        if(firing==-1 && weapon->get_px()-imgS/2 < c->get_px() && c->get_px() < weapon->get_px()+imgS/2 &&   weapon->get_py()-imgS/2 < c->get_py() && c->get_py() < weapon->get_py()+imgS/2){
+                exploding = 0;
+                dead = true;
+                return true;
+        }
+        return false;
+    }
+
+
+};
+
+///==================================================================================================================================================
+int main()
+{
+    srand(time(0));
+    gout.open(XX,YY);
+    event ev;
+    gin.timer(TIMER);
+
+    /// INITIALIZATION --------------------------------------------------------
+    vector<Tank*> tanks;
+    Tank *mytank = new Tank(player, 100, 100);
+    tanks.push_back(mytank);
+    for(int i = 0; i <5; i++){
+        Tank *t = new Tank(enemy, 2*XX/3, YY-10 );
+        tanks.push_back(t);
+    }
+    vector<Component*> shells;
+
+
+    Button playB("P L A Y", XX/2-20, 200);
+    Button exitB("E X I T", XX/2-20, 300);
+    Button menuB("M E N U", XX/2-20, 200);
+    Button try_againB("TRY AGAIN", XX/2-20, 200);
+
+
+
+    bool btn_left_pushed    = false;
+    bool key_up_pushed      = false;
+    bool key_down_pushed    = false;
+    bool key_left_pushed    = false;
+    bool key_right_pushed   = false;
+    int i =0;
+    int posx = XX/2;
+    int posy = YY/2;
+    Mode mode = menu;
+    bool exit = false;
+
+    bool is_playB = false;
+    bool is_exitB = false;
+    bool is_menuB = false;
+    bool is_try_againB = false;
+    int counter = 0;
+
+
+    /// RUNNING ------------------------------------------------------------
+    while(gin >> ev && ev.keycode!= key_escape && !exit) {
+        if(ev.button == btn_left) btn_left_pushed = true;
+        if(ev.button == -btn_left) btn_left_pushed = false;
+        if(ev.keycode == key_down   || ev.keycode == 's')  key_down_pushed = true;
+        if(ev.keycode == key_up     || ev.keycode == 'w')  key_up_pushed = true;
+        if(ev.keycode == key_left   || ev.keycode == 'a')  key_left_pushed = true;
+        if(ev.keycode == key_right  || ev.keycode == 'd')  key_right_pushed = true;
+        if(ev.keycode == -key_down  || ev.keycode == -'s') key_down_pushed = false;
+        if(ev.keycode == -key_up    || ev.keycode == -'w') key_up_pushed = false;
+        if(ev.keycode == -key_left  || ev.keycode == -'a') key_left_pushed = false;
+        if(ev.keycode == -key_right || ev.keycode == -'d') key_right_pushed = false;
+        if(ev.type == ev_mouse){
+            posx = ev.pos_x;
+            posy = ev.pos_y;
+        }
+
+        /// MENU ///
+        if(mode == menu){
+            if(btn_left_pushed){
+                if(exitB.isIn(posx, posy)) is_exitB = true;
+                if(playB.isIn(posx, posy)) is_playB = true;
+            }
+            if(ev.button == -btn_left){
+                if(is_exitB == true){
+                    exit = true;
+                    is_exitB = false;
+                }
+                if(is_playB == true){
+                    mode = play;
+                    is_playB = false;
+                }
+            }
+        }
+        if(ev.keycode == ' ') mode = game_over;
+        /// GAME OVER ///
+        if(mode == game_over){
+            if(btn_left_pushed){
+                if(menuB.isIn(posx, posy)) is_menuB = true;
+                if(try_againB.isIn(posx, posy)) is_try_againB = true;
+            }
+            if(ev.button == -btn_left){
+                if(is_menuB == true){
+                    mode = menu;
+                    is_menuB = false;
+                }
+                if(is_try_againB == true){
+                    mode = play;
+                    is_try_againB = false;
+                }
+            }
+        }
+
+        /// PLAY ///
+        if(ev.button == btn_left){
+            Component* s = mytank->shoot();
+            shells.push_back(s);
+            cout<<shells.size();;
+
+        }
+
+
+
+        /// --------------- T I M E R ---------------- ///
+        if(ev.type == ev_timer){
+            /// MENU ///
+            if(mode == menu){
+                clear_window();
+                playB.show();
+                exitB.show();
+                gout<<refresh;
+
+            }
+
+            /// GAME OVER ///
+            if (mode == game_over){
+                clear_window();
+                menuB.show();
+                try_againB.show();
+                gout<<refresh;
+            }
+
+            /// PLAY ///
+            if(mode == play){
+                /// Move, turn
+                if(key_up_pushed) mytank->move(7);
+                if(key_down_pushed) mytank->move(-7);
+                if(key_left_pushed) mytank->turn(-PI/30);
+                if(key_right_pushed) mytank->turn(PI/30);
+                mytank->set_weapon_direction(posx, posy);
+
+                ///isShoted?
+                for(int i = 0; i<shells.size(); i++){
+                    for(int j = 0; j<tanks.size(); j++){
+                        if(tanks[j]->isHit(shells[i])){
+
+                        }
+                    }
+                }
+
+
+                /// Show
+                clear_window();
+
+
+                for(Component *s : shells){
+                    s->show();
+                    s->move();
+                }
+
+                for(int i = 1; i<tanks.size(); i++){
+                    int r = 0;
+                    tanks[i]->show();
+                    if(counter%40 == 0){
+                        r = rand()%100;
+                        if (r%2 == 0)tanks[i]->turn(-PI/30);
+                        if (r%1 == 0) tanks[i]->turn(PI/10);
+                    }
+                    if(counter%50 == 0){
+                        Component* s = tanks[i]->shoot();
+                        shells.push_back(s);
+                    }
+                    if (r%4 == 1)tanks[i]->move(-7);
+                    else tanks[i]->move(7);
+                    tanks[i]->set_weapon_direction(mytank->getx(), mytank->gety());
+                }
+                counter++;
+
+
+                mytank->show();//(1-((i%32)/32.0)) - elhalványuló.
+
+
+                for(int i = 0; i<tanks.size(); i++){
+                    if(tanks[i]->isExploaded()){
+                        tanks[i]=tanks[tanks.size()-1];
+                        tanks.pop_back();
+                        if(i == 0) mode = game_over;
+                        i--;
+                    }
+                }
+
+                //gout<<color(0,0,0)<<move_to(XX-90 , YY-10)<<text(str(posx) + " , " + str(posy));
+                gout<<refresh;
+                i++;
+            }
+        }
+    }
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+    vector<string>fnames;
+    fnames.push_back("Hull_green");
+    fnames.push_back("Gun_green");
+    fnames.push_back("Explosion_1");
+    fnames.push_back("Explosion_2");
+    fnames.push_back("Explosion_3");
+    fnames.push_back("Explosion_4");
+    fnames.push_back("Explosion_5");
+    fnames.push_back("Explosion_6");
+    fnames.push_back("Explosion_7");
+    fnames.push_back("Explosion_8");
+    fnames.push_back("Fire_1");
+    fnames.push_back("Fire_2");
+    fnames.push_back("Fire_3");
+    fnames.push_back("Fire_4");
+    fnames.push_back("Hull_green");
+    fnames.push_back("Hull_blue");
+    fnames.push_back("Hull_red");
+    fnames.push_back("Hull_turq");
+    fnames.push_back("Gun_green");
+    fnames.push_back("Gun_blue");
+    fnames.push_back("Gun_red");
+    fnames.push_back("Gun_turq");
+    fnames.push_back("Shell");
+    fnames.push_back("Shell_medium");*/
+    /*
+    vector<Component*>components;
+    for(fname : fnames){
+        Component *tp = new Component( fname, 110, 90);
+        if(fname != "Hull_green" && fname != "Gun_green")
+        components.push_back(tp);
+    }
+    */
+
+
+
+
+/*
+void resize_N_to_Nper4(vector<vector<Pixel>> &pixels){//resize to the the (1/4)^2 of the original image --- N -> N/4
+    int N = pixels.size();
+    vector<vector<Pixel>> newp(N/4, vector<Pixel>(N/4));
+    for(int x = 0; x<N; x+=4){
+        for(int y = 0; y<N; y+=4){
+            int sumr = 0, sumg = 0, sumb = 0;
+            bool transparent = false;
+            for(int i = x; i<x+4; i++){
+                for(int j = y; j<y+4; j++){
+                    if(pixels[i][j].transp == true){
+                        transparent = true;
+                        break;
+                    }
+                    sumr +=(int)pixels[i][j].r;
+                    sumg +=(int)pixels[i][j].g;
+                    sumb +=(int)pixels[i][j].b;
+                }
+                if(transparent) break;
+            }
+            if(transparent){
+                newp[x/4][y/4] = Pixel(0,0,0,true);
+            }
+            else newp[x/4][y/4] = Pixel(sumr/16, sumg/4/4, sumb/4/4, false);
+        }
+    }
+    pixels = newp;
+}
+
+void gen_kepfile(vector<vector<Pixel>>pixels, string name){
+    ofstream f(name + ".kep");
+    f<<pixels.size()<<endl<<pixels[0].size()<<endl;
+    for(int y = 0; y < pixels[0].size(); y++){
+        for(int x = 0; x < pixels.size(); x++){
+            f<<(int)pixels[x][y].r<<" "<<(int)pixels[x][y].g<<" "<<(int)pixels[x][y].b<<"   ";
+        }
+        f<<endl;
+    }
+
+}
+*/

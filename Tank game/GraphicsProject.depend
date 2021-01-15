@@ -1,0 +1,24 @@
+# depslib dependency file v1.0
+1582719187 source:c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\3. gyakorlat\particle pointer\main.cpp
+	"graphics.hpp"
+	<iostream>
+	<vector>
+	<random>
+	<fstream>
+
+1581492386 c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\3. gyakorlat\particle pointer\include\graphics.hpp
+	<string>
+
+1584345752 source:c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\bead1 - tank game\tank game\main.cpp
+	"graphics.hpp"
+	<iostream>
+	<vector>
+	<random>
+	<time.h>
+	<fstream>
+	<sstream>
+	<cmath>
+
+1581492386 c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\bead1 - tank game\tank game\include\graphics.hpp
+	<string>
+

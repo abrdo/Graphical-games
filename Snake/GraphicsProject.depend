@@ -1,0 +1,20 @@
+# depslib dependency file v1.0
+1593100223 source:c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\www graphicskit másolata\main.cpp
+	"graphics.hpp"
+	<iostream>
+
+1581495986 c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\www graphicskit másolata\include\graphics.hpp
+	<string>
+
+1593995237 source:c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\www graphicskit másolata másolata\main.cpp
+	"graphics.hpp"
+	<iostream>
+	<vector>
+	<ctime>
+	<cstdlib>
+	<sstream>
+	<cmath>
+
+1581495986 c:\users\domonkos\documents\ppke itk tanulmányok\mérnökinfó msc\1. félév (tavasz)\bevprog2\www graphicskit másolata másolata\include\graphics.hpp
+	<string>
+
